@@ -21,7 +21,7 @@ exports.handler = async (event) => {
             name: 'Chop Builder Pro',
             description: 'Unlock all features: kick patterns, chop playback, more groups, history & favourites, and more.',
           },
-          unit_amount: 299, // €2.99 in cents
+          unit_amount: 150, // €1.50 in cents
         },
         quantity: 1,
       }],
