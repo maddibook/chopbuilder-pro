@@ -270,6 +270,12 @@
         </div>
         <div style="font-size:11px;color:var(--faint);margin-top:5px;text-align:center;">Enter the email you used when purchasing</div>
       </div>
+      <div id="promo-form" style="margin-top:8px;">
+        <div style="display:flex;gap:6px;">
+          <input id="promo-input" type="text" placeholder="Have a promo code?" onkeydown="if(event.key==='Enter')redeemPromo()" style="flex:1;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;outline:none;" />
+          <button onclick="redeemPromo()" style="padding:9px 14px;border-radius:var(--r);border:none;background:var(--surface2);color:var(--muted);border:1px solid var(--border2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;">Apply</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1053,6 +1059,40 @@ async function verifyAndUnlock(sessionId) {
   }
 }
 
+
+// ── Promo codes ───────────────────────────────────────────
+// Add your codes here — all lowercase. Share them with friends.
+// To add a new code just add it to this list and redeploy index.html.
+const PROMO_CODES = [
+  'drums2024',      // example — change these to whatever you want!
+  'chopbuilder187',
+];
+
+function redeemPromo() {
+  const input = document.getElementById('promo-input');
+  const status = document.getElementById('payment-status');
+  const code = input.value.trim().toLowerCase();
+
+  if (!code) {
+    status.textContent = 'Please enter a promo code.';
+    status.style.color = '#fca5a5';
+    return;
+  }
+
+  if (PROMO_CODES.includes(code)) {
+    // Valid — store a local token and unlock
+    localStorage.setItem(PRO_TOKEN_KEY, 'promo-' + code);
+    localStorage.setItem(PRO_SESSION_KEY, 'promo-' + code);
+    unlockPro();
+    status.textContent = '';
+    input.value = '';
+  } else {
+    status.textContent = 'Invalid promo code.';
+    status.style.color = '#fca5a5';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  }
+}
+
 function showRestoreForm() {
   const form = document.getElementById('restore-form');
   const btn = document.getElementById('restore-toggle');
@@ -1125,9 +1165,13 @@ function unlockPro() {
 function checkUrlForToken() {
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('token');
+  const isGift = params.get('gift') === '1';
   const cancelled = params.get('cancelled');
 
-  if (sessionId) {
+  if (sessionId && isGift) {
+    // Gift token — verify and unlock directly
+    verifyGiftToken(sessionId);
+  } else if (sessionId) {
     verifyAndUnlock(sessionId);
   } else if (cancelled) {
     window.history.replaceState({}, '', window.location.pathname);
@@ -1135,9 +1179,35 @@ function checkUrlForToken() {
     status.textContent = 'Payment cancelled.';
     status.style.color = 'var(--muted)';
   } else {
-    // Check if already paid (stored token)
     const token = localStorage.getItem(PRO_TOKEN_KEY);
-    if (token) unlockPro();
+    if (token) unlockPro(); // works for both paid and promo tokens
+  }
+}
+
+async function verifyGiftToken(giftId) {
+  const status = document.getElementById('payment-status');
+  status.textContent = 'Unlocking…';
+  status.style.color = 'var(--muted)';
+  try {
+    const res = await fetch(`${NETLIFY_BASE}/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: giftId, gift: true }),
+    });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem(PRO_TOKEN_KEY, data.token);
+      localStorage.setItem(PRO_SESSION_KEY, giftId);
+      window.history.replaceState({}, '', window.location.pathname);
+      unlockPro();
+      status.textContent = '';
+    } else {
+      status.textContent = 'Invalid gift link.';
+      status.style.color = '#fca5a5';
+    }
+  } catch {
+    status.textContent = 'Could not connect.';
+    status.style.color = '#fca5a5';
   }
 }
 
