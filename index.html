@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chop Builder — Drum Fill Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #18181c;
+    --surface2: #222228;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0eff4;
+    --muted: #8e8d99;
+    --faint: #4a4955;
+    --accent: #b49cff;
+    --accent-bg: rgba(180,156,255,0.12);
+    --accent-dark: #7c5cfc;
+    --green: #6ee7b7;
+    --green-bg: rgba(110,231,183,0.1);
+    --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    --r: 10px;
+    --r-lg: 14px;
+  }
+
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 100px; }
+
+  header { padding: 28px 20px 0; max-width: 560px; margin: 0 auto; }
+  .wordmark { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
+  h1 { font-size: clamp(28px, 7vw, 42px); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .subtitle { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 28px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px; margin-bottom: 12px; }
+  .section-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--faint); text-transform: uppercase; margin-bottom: 12px; }
+  main { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--border2); background: transparent; color: var(--muted); font-family: var(--mono); font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .chip.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+  .seg-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border2); background: transparent; color: var(--muted); font-family: var(--sans); font-size: 13px; cursor: pointer; }
+  .seg.on { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+
+  .btn-generate { width: 100%; padding: 15px; background: var(--accent-dark); color: #fff; border: none; border-radius: var(--r); font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+  .btn-generate:active { opacity: 0.85; }
+
+
+  /* ── Sticking dropdown ── */
+  .rud-dropdown { position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); z-index:200; background:#1e1e26; border:1px solid var(--border2); border-radius:var(--r-lg); padding:6px; min-width:160px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
+  .rud-option { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-radius:var(--r); cursor:pointer; transition:background 0.1s; }
+  .rud-option:hover { background:var(--surface2); }
+  .rud-option.active { background:var(--accent-bg); }
+  .rud-option-name { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .rud-option-pattern { font-family:var(--mono); font-size:12px; font-weight:700; white-space:nowrap; }
+
+  /* ── Lock button ── */
+  .lock-btn { position:absolute; top:-4px; right:-4px; width:18px; height:18px; border-radius:50%; border:1.5px solid transparent; background:transparent; color:transparent; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.15s, border-color 0.15s, color 0.15s; z-index:10; line-height:1; }
+  .fill-group-wrap:hover .lock-btn { border-color:var(--border2); color:var(--faint); background:var(--surface2); }
+  .lock-btn.locked { background:var(--accent-dark) !important; border-color:var(--accent-dark) !important; color:#fff !important; }
+  .fill-group-wrap { position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; }
+
+
+
+  /* ── Rudiment selector modal ── */
+  .rud-sel-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:50;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s; }
+  .rud-sel-overlay.open { opacity:1;pointer-events:all; }
+  .rud-sel-sheet { background:#1a1a20;border:1px solid var(--border2);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;padding:20px;transform:translateY(30px);transition:transform 0.22s cubic-bezier(0.32,0.72,0,1); }
+  .rud-sel-overlay.open .rud-sel-sheet { transform:translateY(0); }
+  .rud-sel-handle { width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 18px; }
+  .rud-sel-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:16px; }
+  .rud-sel-title { font-size:17px;font-weight:600; }
+  .rud-sel-close { background:none;border:none;cursor:pointer;color:var(--faint);font-size:22px;padding:2px;line-height:1; }
+  .rud-sel-group-label { font-family:var(--mono);font-size:10px;letter-spacing:0.14em;color:var(--faint);text-transform:uppercase;margin:14px 0 8px; }
+  .rud-sel-group-label:first-of-type { margin-top:0; }
+  .rud-check-row { display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface2);margin-bottom:6px;cursor:pointer;transition:border-color 0.12s; }
+  .rud-check-row:hover { border-color:var(--border2); }
+  .rud-check-row.checked { border-color:var(--accent);background:var(--accent-bg); }
+  .rud-check-left { display:flex;align-items:center;gap:10px; }
+  .rud-check-pattern { font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);min-width:72px; }
+  .rud-check-name { font-size:13px;color:var(--muted); }
+  .rud-checkbox { width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.12s; }
+  .rud-check-row.checked .rud-checkbox { background:var(--accent-dark);border-color:var(--accent-dark); }
+  .rud-sel-actions { display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border); }
+  .rud-sel-btn { flex:1;padding:11px;border-radius:var(--r);border:1px solid var(--border2);background:transparent;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer; }
+  .rud-sel-btn.primary { background:var(--accent-dark);border-color:var(--accent-dark);color:#fff; }
+
+  /* ── Kick toggle ── */
+  .kick-toggle-btn { background:none; border:none; cursor:pointer; padding:4px; }
+  .kick-toggle-track { width:44px; height:26px; border-radius:13px; background:var(--surface2); border:1.5px solid var(--border2); position:relative; transition:background 0.2s, border-color 0.2s; }
+  .kick-toggle-track.on { background:rgba(251,146,60,0.3); border-color:#fb923c; }
+  .kick-toggle-thumb { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--faint); transition:transform 0.2s, background 0.2s; }
+  .kick-toggle-track.on .kick-toggle-thumb { transform:translateX(18px); background:#fb923c; }
+
+  /* ── Metronome ── */
+  .metro-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .bpm-display { font-family: var(--mono); font-size: 36px; font-weight: 700; line-height: 1; }
+  .bpm-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--faint); text-transform: uppercase; margin-top: 2px; }
+  .metro-controls { display: flex; gap: 8px; align-items: center; }
+  .btn-tap { padding: 10px 18px; border-radius: var(--r); border: 1.5px solid var(--border2); background: transparent; color: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn-tap:active { background: var(--surface2); }
+  .btn-play { width: 48px; height: 48px; border-radius: 50%; border: none; background: var(--accent-dark); color: #fff; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .btn-play:active { opacity: 0.85; }
+  .btn-play.playing { background: #c0392b; }
+  .bpm-slider { width: 100%; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; background: var(--surface2); outline: none; cursor: pointer; margin-bottom: 8px; }
+  .bpm-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); }
+  .bpm-slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid var(--bg); }
+  .bpm-range-labels { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .beat-dots { display: flex; gap: 6px; margin-top: 14px; }
+  .beat-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border2); transition: background 0.05s; flex-shrink: 0; }
+  .beat-dot.accent { border-color: var(--accent); }
+  .beat-dot.active { background: var(--accent); }
+  .beat-dot.active.accent { background: #fff; border-color: #fff; }
+
+  /* ── Chop player ── */
+  .chop-player { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .chop-player-row { display: flex; align-items: center; gap: 10px; }
+  .btn-chop { flex: 1; padding: 12px; border-radius: var(--r); border: none; font-family: var(--sans); font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); transition: all 0.15s; }
+  .btn-chop.ready { background: rgba(110,231,183,0.12); color: var(--green); border-color: rgba(110,231,183,0.3); }
+  .btn-chop.playing-chop { background: rgba(110,231,183,0.2); color: #fff; border-color: var(--green); }
+  .btn-chop:active { opacity: 0.8; }
+
+  /* Chop playback progress */
+  .chop-progress { margin-top: 10px; display: none; }
+  .chop-progress-inner { display: flex; flex-wrap: wrap; gap: 3px; }
+  .chop-note { width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 9px; font-weight: 700; border: 1px solid var(--border2); color: var(--faint); background: var(--surface2); transition: background 0.05s, color 0.05s; }
+  .chop-note.R { border-color: rgba(167,139,250,0.3); color: #c4b5fd; background: rgba(167,139,250,0.08); }
+  .chop-note.L { border-color: rgba(110,231,183,0.3); color: #6ee7b7; background: rgba(110,231,183,0.06); }
+  .chop-note.K { border-color: rgba(251,146,60,0.3); color: #fb923c; background: rgba(251,146,60,0.08); }
+  .chop-note.active-R { background: rgba(167,139,250,0.5); color: #fff; border-color: #c4b5fd; }
+  .chop-note.active-L { background: rgba(110,231,183,0.5); color: #fff; border-color: #6ee7b7; }
+  .chop-note.active-K { background: rgba(251,146,60,0.5); color: #fff; border-color: #fb923c; }
+
+  /* ── Result ── */
+  #result-area { display: none; }
+  .fill-display { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .group-bubble { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .sep { color: var(--faint); font-size: 20px; margin: 0 2px; }
+  .fill-meta { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  .sticking-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  @media (max-width: 400px) {
+    .chip { width: 40px; height: 40px; font-size: 14px; }
+    .group-bubble { width: 38px; height: 38px; font-size: 14px; }
+    .bpm-display { font-size: 28px; }
+  }
+
+  /* ── Premium ── */
+  .premium-bar { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:linear-gradient(135deg,rgba(124,92,252,0.15),rgba(251,146,60,0.1)); border:1px solid rgba(124,92,252,0.3); border-radius:var(--r); margin-bottom:12px; }
+  .premium-bar-left { display:flex; align-items:center; gap:8px; }
+  .premium-bar-label { font-size:13px; font-weight:600; color:var(--accent); }
+  .premium-bar-sub { font-size:11px; color:var(--muted); }
+  .premium-toggle { display:flex; align-items:center; gap:6px; }
+  .premium-toggle-track { width:40px; height:22px; border-radius:11px; background:var(--surface2); border:1.5px solid var(--border2); position:relative; cursor:pointer; transition:background 0.2s,border-color 0.2s; }
+  .premium-toggle-track.on { background:rgba(124,92,252,0.4); border-color:var(--accent-dark); }
+  .premium-toggle-thumb { position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--faint); transition:transform 0.2s,background 0.2s; }
+  .premium-toggle-track.on .premium-toggle-thumb { transform:translateX(18px); background:#fff; }
+
+  /* Lock overlay on chips/segs */
+  .chip.locked { opacity:0.32; cursor:default; position:relative; filter:grayscale(0.4); }
+  .seg.locked { opacity:0.32; cursor:default; position:relative; }
+  .lock-overlay { position:absolute; top:-5px; right:-5px; width:17px; height:17px; border-radius:50%; background:#7c5cfc; border:1.5px solid var(--bg); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .chip { position:relative; }
+
+  /* Lock banner on whole feature blocks */
+  .premium-block { position:relative; }
+  .premium-block-lock {
+    position:absolute; inset:0; border-radius:var(--r);
+    background:rgba(10,10,14,0.85);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:7px; z-index:5; backdrop-filter:blur(3px); cursor:default;
+    border:1px dashed rgba(124,92,252,0.4);
+    min-height:48px;
+  }
+  .premium-block-lock-label { font-size:12px; font-weight:600; color:var(--accent); letter-spacing:0.03em; }
+  .premium-block-lock-sub { font-size:11px; color:var(--muted); }
+
+
+  /* ── History & Favourites ── */
+  .hist-btn { width:100%; padding:11px; background:var(--surface); border:1px solid var(--border2); border-radius:var(--r); color:var(--muted); font-family:var(--sans); font-size:14px; font-weight:500; cursor:pointer; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:8px; position:relative; }
+  .hist-btn:active { opacity:0.8; }
+  .hist-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50; display:flex; align-items:flex-end; justify-content:center; opacity:0; pointer-events:none; transition:opacity 0.2s; }
+  .hist-overlay.open { opacity:1; pointer-events:all; }
+  .hist-sheet { background:#1a1a20; border:1px solid var(--border2); border-radius:20px 20px 0 0; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; padding:20px; transform:translateY(30px); transition:transform 0.22s cubic-bezier(0.32,0.72,0,1); }
+  .hist-overlay.open .hist-sheet { transform:translateY(0); }
+  .hist-handle { width:36px; height:4px; background:var(--border2); border-radius:2px; margin:0 auto 18px; }
+  .hist-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .hist-title { font-size:17px; font-weight:600; }
+  .hist-close { background:none; border:none; cursor:pointer; color:var(--faint); font-size:22px; padding:2px; line-height:1; }
+  .hist-section-label { font-family:var(--mono); font-size:10px; letter-spacing:0.14em; color:var(--faint); text-transform:uppercase; margin:14px 0 8px; }
+  .hist-empty { font-size:13px; color:var(--faint); text-align:center; padding:20px 0; }
+
+  .fill-entry { display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:var(--r); border:1px solid var(--border); background:var(--surface2); margin-bottom:7px; cursor:pointer; transition:border-color 0.12s; }
+  .fill-entry:hover { border-color:var(--border2); }
+  .fill-entry:active { opacity:0.8; }
+  .fill-entry-groups { display:flex; align-items:center; gap:4px; flex-wrap:wrap; flex:1; min-width:0; }
+  .fill-entry-bubble { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:13px; font-weight:700; flex-shrink:0; }
+  .fill-entry-plus { color:var(--faint); font-size:14px; }
+  .fill-entry-sticking { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:3px; letter-spacing:0.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; }
+  .fill-entry-right { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .fill-entry-meta { font-size:11px; color:var(--faint); white-space:nowrap; }
+  .star-btn { background:none; border:none; cursor:pointer; font-size:18px; padding:2px; line-height:1; color:var(--faint); transition:color 0.15s; }
+  .star-btn.starred { color:#fcd34d; }
+  .fill-entry-left { flex:1; min-width:0; }
+
+
+  /* ── Chop option toggles ── */
+  .chop-options { display:flex; gap:8px; margin-top:10px; }
+  .chop-opt-btn { display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; border:1px solid var(--border2); background:transparent; color:var(--muted); font-family:var(--sans); font-size:12px; font-weight:500; cursor:pointer; transition:all 0.15s; user-select:none; }
+  .chop-opt-btn.on { background:var(--accent-bg); border-color:var(--accent); color:var(--accent); }
+  .chop-opt-dot { width:7px; height:7px; border-radius:50%; background:currentColor; opacity:0.5; transition:opacity 0.15s; }
+  .chop-opt-btn.on .chop-opt-dot { opacity:1; }
+
+
+  /* ── Payment ── */
+  .unlock-btn { width:100%; padding:13px; background:linear-gradient(135deg,#7c5cfc,#a855f7); color:#fff; border:none; border-radius:var(--r); font-family:var(--sans); font-size:15px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; }
+  .unlock-btn:active { opacity:0.88; }
+  .unlock-btn:disabled { opacity:0.5; cursor:default; }
+  .restore-btn { width:100%; padding:8px; background:none; border:none; color:var(--faint); font-family:var(--sans); font-size:12px; cursor:pointer; margin-top:4px; }
+  .restore-btn:hover { color:var(--muted); }
+  .payment-status { font-size:12px; text-align:center; margin-top:6px; min-height:18px; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Chop Builder</div>
+  <h1>Build your fills.</h1>
+  <p class="subtitle">Pick your groupings, generate a random combination, then assign stickings for each group.</p>
+</header>
+
+<main>
+
+  <!-- Premium bar — shown when unlocked -->
+  <div class="premium-bar" id="premium-bar" style="display:none;">
+    <div class="premium-bar-left">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="8" rx="2" fill="var(--accent)"/><path d="M5 7V5C5 3.34 6.34 2 8 2C9.66 2 11 3.34 11 5V7" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent);">Chop Builder Pro</div>
+        <div style="font-size:11px;color:var(--muted);">All features unlocked ✓</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unlock section — shown when free -->
+  <div id="unlock-section">
+    <button class="unlock-btn" id="unlock-btn" onclick="startCheckout()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="8" rx="1.5" fill="white"/><path d="M4.5 6V4C4.5 2.62 5.62 1.5 7 1.5C8.38 1.5 9.5 2.62 9.5 4V6" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg>
+      Unlock Pro — €2.99
+    </button>
+    <div class="payment-status" id="payment-status"></div>
+    <button class="restore-btn" onclick="restorePurchase()">Already purchased? Restore</button>
+  </div>
+
+  <!-- Pro features summary (only shown in free mode) -->
+  <div id="pro-features-card" style="background:rgba(124,92,252,0.07);border:1px dashed rgba(124,92,252,0.3);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;display:block;">
+    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px;letter-spacing:0.02em;">🔒 Chop Builder Pro unlocks:</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> Groups 2, 6 &amp; 7</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> 2, 3 &amp; 4 bars</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> Kick patterns</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> Chop playback</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> Choose rudiments</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> History &amp; Favourites</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Groups</div>
+    <div class="chips" id="group-chips"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;">
+      <div>
+        <div class="section-label">Note value</div>
+        <div class="seg-row" id="note-segs"></div>
+      </div>
+      <div>
+        <div class="section-label">Bars</div>
+        <div class="seg-row" id="bar-segs"></div>
+      </div>
+    </div>
+    <div id="kick-row" style="border-top:1px solid var(--border);padding-top:12px;display:none;align-items:center;justify-content:space-between;position:relative;">
+      <div class="section-label" style="margin-bottom:0;">Include kick</div>
+      <button id="kick-toggle" onclick="toggleKick()" class="kick-toggle-btn">
+        <div class="kick-toggle-track" id="kick-toggle-track">
+          <div class="kick-toggle-thumb" id="kick-toggle-thumb"></div>
+        </div>
+      </button>
+      <div class="premium-block-lock" id="kick-lock" style="display:none;border-radius:var(--r);top:0;margin:-1px;padding:10px 0;"><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><rect x="1.5" y="5.5" width="9" height="7" rx="1.5" fill="white"/><path d="M3.5 5.5V4C3.5 2.62 4.62 1.5 6 1.5C7.38 1.5 8.5 2.62 8.5 4V5.5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg><span class="premium-block-lock-label">Pro feature</span><span class="premium-block-lock-sub">Include kick patterns</span></div>
+    </div>
+  </div>
+
+  <div id="rud-sel-wrap" style="position:relative;margin-bottom:8px;min-height:60px;">
+    <button class="rud-sel-open-btn" onclick="openRudSelector()" id="rud-sel-btn" style="width:100%;padding:11px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);color:var(--muted);font-family:var(--sans);font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="6.25" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="10.5" width="8" height="1.5" rx="0.75" fill="currentColor"/></svg>
+      Choose rudiments
+    </button>
+    <div class="premium-block-lock" id="rud-sel-lock" style="display:none;border-radius:var(--r);"><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><rect x="1.5" y="5.5" width="9" height="7" rx="1.5" fill="white"/><path d="M3.5 5.5V4C3.5 2.62 4.62 1.5 6 1.5C7.38 1.5 8.5 2.62 8.5 4V5.5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg><span class="premium-block-lock-label">Pro feature</span><span class="premium-block-lock-sub">Choose rudiments</span></div>
+  </div>
+  <button class="btn-generate" onclick="generate()">Generate fill</button>
+
+  <!-- History & Favourites button -->
+  <div id="hist-btn-wrap" style="position:relative;margin-top:8px;display:none;">
+    <button class="hist-btn" id="hist-open-btn" onclick="openHistory()">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M7.5 4.5V7.5L9.5 9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      History &amp; Favourites
+    </button>
+    <div class="premium-block-lock" id="hist-lock" style="display:none;border-radius:var(--r);"><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><rect x="1.5" y="5.5" width="9" height="7" rx="1.5" fill="white"/><path d="M3.5 5.5V4C3.5 2.62 4.62 1.5 6 1.5C7.38 1.5 8.5 2.62 8.5 4V5.5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg><span class="premium-block-lock-label">Pro feature</span><span class="premium-block-lock-sub">History &amp; Favourites</span></div>
+  </div>
+
+  <!-- History modal -->
+  <div class="hist-overlay" id="hist-overlay" onclick="closeHistoryOnBg(event)">
+    <div class="hist-sheet">
+      <div class="hist-handle"></div>
+      <div class="hist-header">
+        <div class="hist-title">History &amp; Favourites</div>
+        <button class="hist-close" onclick="closeHistory()">×</button>
+      </div>
+      <div id="hist-content"></div>
+    </div>
+  </div>
+
+  <!-- Rudiment selector modal -->
+  <div class="rud-sel-overlay" id="rud-sel-overlay" onclick="closeRudSelectorOnBg(event)">
+    <div class="rud-sel-sheet">
+      <div class="rud-sel-handle"></div>
+      <div class="rud-sel-header">
+        <div class="rud-sel-title">Choose rudiments</div>
+        <button class="rud-sel-close" onclick="closeRudSelector()">×</button>
+      </div>
+      <div style="font-size:12px;color:var(--faint);margin-bottom:14px;">Only ticked rudiments will be used in auto-generation. Untick to exclude.</div>
+      <div id="rud-sel-content"></div>
+      <div class="rud-sel-actions">
+        <button class="rud-sel-btn" onclick="setAllRudiments(false)">None</button>
+        <button class="rud-sel-btn" onclick="setAllRudiments(true)">All</button>
+        <button class="rud-sel-btn primary" onclick="closeRudSelector()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="result-area">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="section-label" style="margin-bottom:0;">Fill</div>
+        <button id="share-btn" onclick="shareFill()" style="display:none;background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted);font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;display:none;align-items:center;gap:5px;" title="Copy to clipboard">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="1" width="7" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="3" width="7" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          Copy
+        </button>
+      </div>
+      <div class="fill-display" id="fill-display"></div>
+      <div class="fill-meta" id="fill-meta"></div>
+    </div>
+
+    <!-- Metronome + Chop Player (inside result-area so it appears after fill) -->
+    <div class="card">
+      <div class="section-label">Metronome</div>
+      <div class="metro-top">
+        <div>
+          <div class="bpm-display" id="bpm-display">80</div>
+          <div class="bpm-label">BPM</div>
+        </div>
+        <div class="metro-controls">
+          <button class="btn-tap" onclick="tap()">TAP</button>
+          <button class="btn-play" id="play-btn" onclick="toggleMetronome()"><span id="play-icon">▶</span></button>
+        </div>
+      </div>
+      <input type="range" class="bpm-slider" id="bpm-slider" min="40" max="240" value="80" oninput="setBpm(this.value)">
+      <div class="bpm-range-labels"><span>40</span><span>120</span><span>240</span></div>
+      <div class="beat-dots" id="beat-dots"></div>
+      <div class="chop-player" id="chop-player-wrap" style="position:relative;">
+        <div class="section-label" style="margin-bottom:10px;">Chop playback</div>
+        <div class="chop-player-row">
+          <button class="btn-chop" id="chop-btn" onclick="toggleChop()">
+            <span id="chop-btn-icon">▶</span>
+            <span id="chop-btn-label">No fill generated yet</span>
+          </button>
+        </div>
+        <div class="chop-options">
+          <button class="chop-opt-btn" id="loop-btn" onclick="toggleLoop()">
+            <span class="chop-opt-dot"></span>Loop
+          </button>
+          <button class="chop-opt-btn" id="countin-btn" onclick="toggleCountIn()">
+            <span class="chop-opt-dot"></span>Count in
+          </button>
+        </div>
+          <div class="chop-progress" id="chop-progress">
+          <div class="chop-progress-inner" id="chop-notes-display"></div>
+        </div>
+        <div class="premium-block-lock" id="chop-lock" style="display:none;border-radius:var(--r);padding:16px 0;"><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><rect x="1.5" y="5.5" width="9" height="7" rx="1.5" fill="white"/><path d="M3.5 5.5V4C3.5 2.62 4.62 1.5 6 1.5C7.38 1.5 8.5 2.62 8.5 4V5.5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg><span class="premium-block-lock-label">Pro feature</span><span class="premium-block-lock-sub">Chop playback</span></div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────────────────
+// Data
+// ─────────────────────────────────────────────────────────
+const RUDIMENTS = {
+  2:[
+    {name:'Double stroke',pattern:'RR',desc:'Foundation of doubles — even pressure both strokes.'},
+    {name:'Double stroke (L)',pattern:'LL',desc:'Lead with the left for left-hand development.'},
+  ],
+  3:[
+    {name:'Paradiddle frag',pattern:'RLL',desc:'Opens into paradiddle phrases naturally.'},
+    {name:'Single stroke 3',pattern:'RLR',desc:'Alternating lead — flows naturally across surfaces.'},
+    {name:'Single stroke 3 (L)',pattern:'LRL',desc:'Left-hand lead version.'},
+    {name:'Double + single',pattern:'RRL',desc:'Double on the right, single left.'},
+    {name:'Double + single (L)',pattern:'LLR',desc:'Double on the left, single right.'},
+    {name:'Paradiddle frag (L)',pattern:'LRR',desc:'Left-hand version.'},
+    {name:'RLK',pattern:'RLK',desc:'Kick on the third — natural and groovy.'},
+    {name:'LRK',pattern:'LRK',desc:'Left-lead version.'},
+    {name:'RKL',pattern:'RKL',desc:'Kick in the middle.'},
+  ],
+  4:[
+    {name:'Paradiddle',pattern:'RLRR',desc:'The king of 4-note groupings. Accent the first note.'},
+    {name:'Paradiddle (L)',pattern:'LRLL',desc:'Left-lead paradiddle.'},
+    {name:'Double stroke',pattern:'RRLL',desc:'Doubles on each hand — great speed builder.'},
+    {name:'Single stroke 4',pattern:'RLRL',desc:'Pure alternating strokes.'},
+    {name:'Single stroke 4 (L)',pattern:'LRLR',desc:'Left-lead alternating.'},
+    {name:'RLLK',pattern:'RLLK',desc:'Kick on the fourth — strong landing.'},
+    {name:'LRRK',pattern:'LRRK',desc:'Left-lead version.'},
+    {name:'RLKL',pattern:'RLKL',desc:'Kick on the third.'},
+    {name:'RLKR',pattern:'RLKR',desc:'Kick third, resolve right.'},
+    {name:'RLKK',pattern:'RLKK',desc:'Double kick landing — powerful finish.'},
+    {name:'LRKK',pattern:'LRKK',desc:'Left-lead version with double kick.'},
+  ],
+  5:[
+    {name:'RLRLL',pattern:'RLRLL',desc:'Classic Gavin Harrison / odd-grouping staple.'},
+    {name:'Five stroke roll',pattern:'RRLLR',desc:'Two doubles + single. Accent the last note.'},
+    {name:'Five stroke roll (L)',pattern:'LLRRL',desc:'Left-lead version.'},
+    {name:'LRLRR',pattern:'LRLRR',desc:'Left-lead version of the above.'},
+    {name:'RLLRL',pattern:'RLLRL',desc:'Double on the left in the middle creates a nice lilt.'},
+    {name:'LRRLL',pattern:'LRRLL',desc:'Mirror version.'},
+    {name:'RLLKR',pattern:'RLLKR',desc:'Kick on 4 — very musical over a groove.'},
+    {name:'RLKLL',pattern:'RLKLL',desc:'Kick on 3, double left landing.'},
+    {name:'RLRLK',pattern:'RLRLK',desc:'Kick on the last note — punchy finish.'},
+  ],
+  6:[
+    {name:'Six stroke roll',pattern:'RLLRRL',desc:'Three sets of doubles — great for fast 6s.'},
+    {name:'Paradiddle-diddle',pattern:'RLRRLL',desc:'Extends the paradiddle with an extra double.'},
+    {name:'Paradiddle-diddle (L)',pattern:'LRLLRR',desc:'Left-lead version.'},
+    {name:'Single stroke 6',pattern:'RLRLRL',desc:'Pure alternating.'},
+    {name:'Double paradiddle',pattern:'RLRLRR',desc:'Two singles then a paradiddle ending.'},
+    {name:'Double paradiddle (L)',pattern:'LRLRLL',desc:'Left-lead double paradiddle.'},
+    {name:'RLLKRL',pattern:'RLLKRL',desc:'Kick on 4 in a six — creates a nice lilt.'},
+    {name:'RLRLKL',pattern:'RLRLKL',desc:'Kick on 5 — syncopated feel.'},
+    {name:'RLLRRK',pattern:'RLLRRK',desc:'Kick to close the phrase.'},
+    {name:'RLRLKK',pattern:'RLRLKK',desc:'Double kick at the end — very driving feel.'},
+  ],
+  7:[
+    {name:'Seven stroke roll',pattern:'RRLLRRL',desc:'Three doubles + a single. Accent the last note.'},
+    {name:'Seven stroke roll (L)',pattern:'LLRRLLR',desc:'Left-lead version.'},
+    {name:'RLRLRLL',pattern:'RLRLRLL',desc:'Used by Thomas Lang and Mike Mangini.'},
+    {name:'LRLRLRR',pattern:'LRLRLRR',desc:'Left-lead version.'},
+    {name:'RLLRRLL',pattern:'RLLRRLL',desc:'Balanced doubles — symmetrical feel.'},
+    {name:'RLLKRLL',pattern:'RLLKRLL',desc:'Kick on 4 — very Virgil Donati.'},
+    {name:'RLRLKLR',pattern:'RLRLKLR',desc:'Kick on 5 in the seven.'},
+    {name:'RLRLLKR',pattern:'RLRLLKR',desc:'Kick near the end for a strong landing.'},
+  ],
+
+};
+
+const GROUP_COLORS = {
+  2:{bg:'rgba(96,165,250,0.18)',text:'#93c5fd',border:'rgba(96,165,250,0.35)'},
+  3:{bg:'rgba(110,231,183,0.15)',text:'#6ee7b7',border:'rgba(110,231,183,0.3)'},
+  4:{bg:'rgba(167,139,250,0.18)',text:'#c4b5fd',border:'rgba(167,139,250,0.35)'},
+  5:{bg:'rgba(251,191,36,0.15)',text:'#fcd34d',border:'rgba(251,191,36,0.3)'},
+  6:{bg:'rgba(251,146,60,0.15)',text:'#fdba74',border:'rgba(251,146,60,0.3)'},
+  7:{bg:'rgba(244,114,182,0.15)',text:'#f9a8d4',border:'rgba(244,114,182,0.3)'},
+};
+
+const NOTE_VALUES = {'8th':8,'16th':16,'triplet':12,'32nd':32};
+const BAR_OPTS = [1,2,3,4];
+const ALL_GROUPS = [2,3,4,5,6,7];
+
+let activeGroups = new Set([3,4,5]);
+let includeKick = false;
+let activeNote = '16th';
+let activeBars = 1;
+let currentResult = null;
+let selectedStickings = {};
+let manuallySet = new Set(); // slot indices the user has explicitly locked
+
+// ─────────────────────────────────────────────────────────
+// Audio context
+// ─────────────────────────────────────────────────────────
+let audioCtx = null;
+
+// Returns a Promise that resolves to a running AudioContext.
+// On iOS Safari the context MUST be created and resumed inside a user gesture,
+// and resume() is async — we must await it before scheduling any audio.
+async function getCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+    await audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+// ─────────────────────────────────────────────────────────
+// Sound synthesis
+// Metronome click: short sine pop
+// Right hand: higher-pitched rimshot-style tap
+// Left hand:  lower-pitched, slightly softer tap
+// ─────────────────────────────────────────────────────────
+async function playClick(time, isAccent) {
+  const ctx = await getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.frequency.value = isAccent ? 1200 : 800;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0, time);
+  gain.gain.linearRampToValueAtTime(isAccent ? 0.7 : 0.4, time + 0.002);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+  osc.start(time); osc.stop(time + 0.05);
+}
+
+async function playStroke(time, hand) {
+  const ctx = await getCtx();
+
+  // Both hands are hi-hat sounds built from the same band-passed noise
+  // core, but with very different character:
+  //   R = closed hi-hat: ultra-short, very high, tight metallic tick
+  //   L = open hi-hat:   longer decay, slightly lower, washy and airy
+
+  // ── Shared noise source (each call generates its own buffer) ──
+  function makeNoise(durationSecs) {
+    const size = Math.floor(ctx.sampleRate * durationSecs);
+    const buf = ctx.createBuffer(1, size, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    return src;
+  }
+
+  if (hand === 'R') {
+    // ── RIGHT — closed hi-hat ───────────────── ─────────────────────────────────
+    // Very high bandpass (8–16 kHz), punchy attack, dies in ~30 ms
+    const src = makeNoise(0.04);
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 5500;
+    hp.Q.value = 0.6;
+
+    const gain = ctx.createGain();
+    src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
+
+    gain.gain.setValueAtTime(0.55, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.028); // very tight
+
+    src.start(time); src.stop(time + 0.04);
+    return [src];
+
+  } else if (hand === 'L') {
+    // ── LEFT — open hi-hat ────────────────────── ────────────────────────────────────
+    const src = makeNoise(0.4);
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2000;
+    hp.Q.value = 0.5;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 7000;
+    lp.Q.value = 0.6;
+
+    const peak = ctx.createBiquadFilter();
+    peak.type = 'peaking';
+    peak.frequency.value = 4000;
+    peak.gain.value = 3;
+    peak.Q.value = 1.2;
+
+    const gain = ctx.createGain();
+    src.connect(hp); hp.connect(lp); lp.connect(peak); peak.connect(gain); gain.connect(ctx.destination);
+
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(0.38, time + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.32);
+
+    src.start(time); src.stop(time + 0.4);
+    return [src];
+
+  } else {
+    // ── KICK — deep sine thud with pitch drop ──────────────────
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.15);
+
+    // Click transient for attack punch
+    const clickSize = Math.floor(ctx.sampleRate * 0.008);
+    const clickBuf = ctx.createBuffer(1, clickSize, ctx.sampleRate);
+    const cd = clickBuf.getChannelData(0);
+    for (let i = 0; i < clickSize; i++) cd[i] = Math.random() * 2 - 1;
+    const click = ctx.createBufferSource();
+    click.buffer = clickBuf;
+
+    const clickFilt = ctx.createBiquadFilter();
+    clickFilt.type = 'lowpass';
+    clickFilt.frequency.value = 200;
+
+    const oscGain = ctx.createGain();
+    const clickGain = ctx.createGain();
+
+    osc.connect(oscGain); oscGain.connect(ctx.destination);
+    click.connect(clickFilt); clickFilt.connect(clickGain); clickGain.connect(ctx.destination);
+
+    oscGain.gain.setValueAtTime(0, time);
+    oscGain.gain.linearRampToValueAtTime(0.9, time + 0.004);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+
+    clickGain.gain.setValueAtTime(0.4, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+
+    osc.start(time); osc.stop(time + 0.28);
+    click.start(time); click.stop(time + 0.012);
+    return [osc, click];
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Metronome
+// ─────────────────────────────────────────────────────────
+let isMetroPlaying = false;
+let bpm = 80;
+let currentBeat = 0;
+let beatsPerBar = 4;
+let nextNoteTime = 0;
+let schedulerTimer = null;
+let tapTimes = [];
+
+function scheduler() {
+  // audioCtx is guaranteed running by the time setInterval fires (startMetro awaits it first)
+  if (!audioCtx || audioCtx.state !== 'running') return;
+  const spb = 60.0 / bpm;
+  while (nextNoteTime < audioCtx.currentTime + 0.1) {
+    playClick(nextNoteTime, currentBeat === 0);
+    const beat = currentBeat;
+    const t = nextNoteTime;
+    setTimeout(() => updateBeatDots(beat), Math.max(0, (t - audioCtx.currentTime) * 1000));
+    nextNoteTime += spb;
+    currentBeat = (currentBeat + 1) % beatsPerBar;
+  }
+}
+
+function toggleMetronome() {
+  if (isMetroPlaying) stopMetro(); else startMetro();
+}
+
+async function startMetro() {
+  const ctx = await getCtx();
+  isMetroPlaying = true;
+  currentBeat = 0;
+  nextNoteTime = ctx.currentTime + 0.05;
+  schedulerTimer = setInterval(scheduler, 25);
+  document.getElementById('play-icon').innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" fill="white"/></svg>';
+  document.getElementById('play-btn').classList.add('playing');
+}
+
+function stopMetro() {
+  isMetroPlaying = false;
+  clearInterval(schedulerTimer);
+  schedulerTimer = null;
+  document.getElementById('play-icon').textContent = '▶';
+  document.getElementById('play-btn').classList.remove('playing');
+  document.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('active'));
+}
+
+function setBpm(val) {
+  bpm = parseInt(val);
+  document.getElementById('bpm-display').textContent = bpm;
+  document.getElementById('bpm-slider').value = bpm;
+}
+
+async function tap() {
+  await getCtx();
+  const now = Date.now();
+  tapTimes.push(now);
+  if (tapTimes.length > 8) tapTimes.shift();
+  if (tapTimes.length > 1 && (now - tapTimes[tapTimes.length - 2]) > 3000) {
+    tapTimes = [now]; return;
+  }
+  if (tapTimes.length > 1) {
+    const intervals = [];
+    for (let i = 1; i < tapTimes.length; i++) intervals.push(tapTimes[i] - tapTimes[i-1]);
+    const avg = intervals.reduce((a,b) => a+b,0) / intervals.length;
+    const newBpm = Math.round(60000 / avg);
+    setBpm(Math.min(240, Math.max(40, newBpm)));
+    if (isMetroPlaying) { stopMetro(); startMetro(); }
+  }
+}
+
+function updateBeatDots(beat) {
+  document.querySelectorAll('.beat-dot').forEach((d,i) => d.classList.toggle('active', i === beat));
+}
+
+function renderBeatDots() {
+  const c = document.getElementById('beat-dots');
+  c.innerHTML = '';
+  for (let i = 0; i < beatsPerBar; i++) {
+    const d = document.createElement('div');
+    d.className = 'beat-dot' + (i === 0 ? ' accent' : '');
+    c.appendChild(d);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Chop Player
+// ─────────────────────────────────────────────────────────
+let isChopPlaying = false;
+let chopTimeouts = [];
+let chopNoteEls = [];
+let chopAudioNodes = []; // track all scheduled nodes so we can stop them
+
+function getFullPattern() {
+  if (!currentResult) return null;
+  // Need stickings for all groups
+  const allSet = currentResult.every((_,i) => selectedStickings[i]);
+  if (!allSet) return null;
+  return currentResult.map((_,i) => selectedStickings[i].pattern).join('').split('');
+}
+
+function getFullPatternFallback() {
+  // No sticking? use simple alternating R L
+  if (!currentResult) return null;
+  const total = currentResult.reduce((a,b)=>a+b,0);
+  return Array.from({length:total}, (_,i) => i%2===0?'R':'L');
+}
+
+function updateChopBtn() {
+  const btn = document.getElementById('chop-btn');
+  const icon = document.getElementById('chop-btn-icon');
+  const label = document.getElementById('chop-btn-label');
+
+  if (!currentResult) {
+    btn.className = 'btn-chop';
+    icon.textContent = '▶';
+    label.textContent = 'No fill generated yet';
+    return;
+  }
+
+  const hasSticking = currentResult.every((_,i) => selectedStickings[i]);
+
+  if (isChopPlaying) {
+    btn.className = 'btn-chop playing-chop';
+    icon.textContent = '⏹';
+    label.textContent = 'Stop';
+  } else {
+    btn.className = 'btn-chop ready';
+    icon.textContent = '▶';
+    label.textContent = 'Play chop';
+  }
+}
+
+function buildChopNotesDisplay(notes) {
+  const container = document.getElementById('chop-notes-display');
+  const prog = document.getElementById('chop-progress');
+  container.innerHTML = '';
+  chopNoteEls = [];
+  notes.forEach(n => {
+    const el = document.createElement('div');
+    const hand = n.toUpperCase();
+    el.className = 'chop-note ' + hand.toUpperCase();
+    el.textContent = n.toUpperCase();
+    container.appendChild(el);
+    chopNoteEls.push({el, hand});
+  });
+  prog.style.display = 'block';
+}
+
+let chopGeneration = 0; // incremented on each stop to invalidate pending visuals
+let loopChop = false;
+let countIn = false;
+
+
+function toggleLoop() {
+  loopChop = !loopChop;
+  document.getElementById('loop-btn').classList.toggle('on', loopChop);
+}
+
+function toggleCountIn() {
+  countIn = !countIn;
+  document.getElementById('countin-btn').classList.toggle('on', countIn);
+}
+
+async function playChopOnce(notes, gen, absoluteStartTime) {
+  // Schedule one full pass using an ABSOLUTE Web Audio time — no currentTime drift
+  const noteInterval = (beatsPerBar / NOTE_VALUES[activeNote]) * (60 / bpm);
+
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    const t = absoluteStartTime + i * noteInterval;
+    const hand = n.toUpperCase() === 'K' ? 'K' : n.toUpperCase() === 'R' ? 'R' : 'L';
+    const nodes = await playStroke(t, hand);
+    if (nodes) chopAudioNodes.push(...nodes);
+    const delay = Math.max(0, (t - audioCtx.currentTime) * 1000);
+    const to = setTimeout(() => {
+      if (chopGeneration !== gen) return;
+      chopNoteEls.forEach(({el}) => el.classList.remove('active-R', 'active-L', 'active-K'));
+      if (chopNoteEls[i]) chopNoteEls[i].el.classList.add('active-' + hand.toUpperCase());
+    }, delay);
+    chopTimeouts.push(to);
+  }
+
+  return notes.length * noteInterval; // duration of one pass in seconds
+}
+
+async function toggleChop() {
+  const ctx = await getCtx();
+  if (isChopPlaying) { stopChop(); return; }
+
+  const notes = getFullPattern() || getFullPatternFallback();
+  if (!notes) return;
+
+  isChopPlaying = true;
+  if (isMetroPlaying) stopMetro();
+  await startMetro();
+  updateChopBtn();
+  buildChopNotesDisplay(notes);
+
+  const gen = ++chopGeneration;
+  chopAudioNodes = [];
+
+  const noteInterval = (beatsPerBar / NOTE_VALUES[activeNote]) * (60 / bpm);
+  const fillDuration = notes.length * noteInterval;
+
+  // Count-in: one bar of clicks before the fill (metro already running so just delay)
+  const countInDuration = countIn ? beatsPerBar * (60 / bpm) : 0;
+
+  // Absolute start time — all loops are multiples of fillDuration from this anchor
+  const anchorTime = audioCtx.currentTime + 0.05 + countInDuration;
+
+  // Play first pass
+  await playChopOnce(notes, gen, anchorTime);
+
+  if (!loopChop) {
+    // Single play — stop after fill ends
+    const endTo = setTimeout(() => {
+      if (chopGeneration !== gen) return;
+      stopChop();
+    }, (anchorTime - audioCtx.currentTime + fillDuration) * 1000 + 100);
+    chopTimeouts.push(endTo);
+  } else {
+    // Loop — schedule each subsequent pass exactly fillDuration after the previous.
+    // We fire the scheduler slightly before each pass ends so audio is pre-queued.
+    const scheduleLoop = async (passIndex) => {
+      const nextStartTime = anchorTime + passIndex * fillDuration;
+      const timeUntilNext = (nextStartTime - audioCtx.currentTime) * 1000;
+      // Schedule 200ms before the next pass starts
+      const schedDelay = Math.max(0, timeUntilNext - 200);
+      const to = setTimeout(async () => {
+        if (chopGeneration !== gen) return;
+        // Reset visual dots for the new pass
+        chopNoteEls.forEach(({el}) => el.classList.remove('active-R','active-L','active-K'));
+        await playChopOnce(notes, gen, nextStartTime);
+        scheduleLoop(passIndex + 1);
+      }, schedDelay);
+      chopTimeouts.push(to);
+    };
+    scheduleLoop(1); // first loop is pass index 1 (pass 0 already playing)
+  }
+}
+
+function stopChop() {
+  isChopPlaying = false;
+  chopGeneration++; // invalidate all pending visual callbacks
+  chopTimeouts.forEach(t => clearTimeout(t));
+  chopTimeouts = [];
+  // Stop all scheduled audio nodes immediately
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  chopAudioNodes.forEach(node => {
+    try { node.stop(now); } catch(e) {}
+  });
+  chopAudioNodes = [];
+  chopNoteEls.forEach(({el}) => el.classList.remove('active-R', 'active-L', 'active-K'));
+  updateChopBtn();
+}
+
+// ─────────────────────────────────────────────────────────
+// Fill generator
+// ─────────────────────────────────────────────────────────
+
+function renderChips() {
+  const c = document.getElementById('group-chips'); c.innerHTML = '';
+  ALL_GROUPS.forEach(g => {
+    const locked = !isPremium && !FREE_GROUPS.has(g);
+    const el = document.createElement('button');
+    el.className = 'chip' + (activeGroups.has(g) ? ' on' : '') + (locked ? ' locked' : '');
+    el.textContent = g;
+    el.style.pointerEvents = locked ? 'none' : '';
+    if (locked) {
+      const badge = document.createElement('div');
+      badge.className = 'lock-overlay';
+      badge.innerHTML = '<svg width="8" height="9" viewBox="0 0 8 9" fill="none"><rect x="1" y="3.5" width="6" height="5" rx="1" fill="var(--faint)"/><path d="M2.5 3.5V2.5C2.5 1.67 3.17 1 4 1C4.83 1 5.5 1.67 5.5 2.5V3.5" stroke="var(--faint)" stroke-width="1" stroke-linecap="round" fill="none"/></svg>';
+      el.appendChild(badge);
+    }
+    el.onclick = () => {
+      if (locked) return;
+      if (activeGroups.has(g)) { if (activeGroups.size > 1) activeGroups.delete(g); }
+      else activeGroups.add(g);
+      renderChips();
+    };
+    c.appendChild(el);
+  });
+}
+
+function renderSegs(id, opts, active, setFn) {
+  const c = document.getElementById(id); c.innerHTML = '';
+  opts.forEach(o => {
+    const el = document.createElement('button');
+    const isPremiumBar = id === 'bar-segs' && !FREE_BARS.has(o);
+    const locked = !isPremium && isPremiumBar;
+    el.className = 'seg' + (o===active?' on':'') + (locked?' locked':'');
+    el.style.pointerEvents = locked ? 'none' : '';
+    el.textContent = typeof o==='number' ? (o===1?'1 bar':o+' bars') : o;
+    if (locked) {
+      el.innerHTML += ' <svg width="9" height="10" viewBox="0 0 9 10" fill="none"><rect x="1" y="4" width="7" height="6" rx="1.5" fill="currentColor" opacity="0.5"/><path d="M2.5 4V2.8C2.5 1.8 3.1 1 4.5 1C5.9 1 6.5 1.8 6.5 2.8V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.5"/></svg>';
+    }
+    el._barVal = o;
+    el.onclick = () => { if(locked) return; setFn(o); renderSegs(id,opts,o,setFn); };
+    c.appendChild(el);
+  });
+}
+
+
+
+
+
+function shareFill() {
+  if (!currentResult) return;
+  const groups = currentResult.join('+');
+  const stickings = currentResult.map((_, i) =>
+    selectedStickings[i] ? selectedStickings[i].pattern : '?'
+  ).join(' · ');
+  const bars = activeBars === 1 ? '1 bar' : activeBars + ' bars';
+  const text = `${groups} | ${stickings} | ${activeNote} · ${bars}`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('share-btn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg> Copied!';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }, 2000);
+  }).catch(() => {
+    // Fallback for browsers that block clipboard
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+
+// ─────────────────────────────────────────────────────────
+// Payment & Pro unlock
+// ─────────────────────────────────────────────────────────
+const NETLIFY_BASE = 'https://chopbuilder-pro.netlify.app/.netlify/functions';
+const PRO_TOKEN_KEY = 'cb_pro_token';
+const PRO_SESSION_KEY = 'cb_pro_session';
+
+async function startCheckout() {
+  const btn = document.getElementById('unlock-btn');
+  const status = document.getElementById('payment-status');
+  btn.disabled = true;
+  btn.textContent = 'Redirecting to checkout…';
+  status.textContent = '';
+  status.style.color = 'var(--muted)';
+
+  try {
+    const res = await fetch(`${NETLIFY_BASE}/create-checkout`, { method: 'POST' });
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (err) {
+    status.textContent = 'Something went wrong — please try again.';
+    status.style.color = '#fca5a5';
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="8" rx="1.5" fill="white"/><path d="M4.5 6V4C4.5 2.62 5.62 1.5 7 1.5C8.38 1.5 9.5 2.62 9.5 4V6" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg> Unlock Pro — €2.99';
+  }
+}
+
+async function verifyAndUnlock(sessionId) {
+  const status = document.getElementById('payment-status');
+  status.textContent = 'Verifying payment…';
+  status.style.color = 'var(--muted)';
+
+  try {
+    const res = await fetch(`${NETLIFY_BASE}/verify-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
+    const data = await res.json();
+
+    if (data.token) {
+      localStorage.setItem(PRO_TOKEN_KEY, data.token);
+      localStorage.setItem(PRO_SESSION_KEY, sessionId);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      unlockPro();
+      status.textContent = '';
+    } else {
+      status.textContent = 'Payment could not be verified. Please contact support.';
+      status.style.color = '#fca5a5';
+    }
+  } catch (err) {
+    status.textContent = 'Verification failed — please try restoring your purchase.';
+    status.style.color = '#fca5a5';
+  }
+}
+
+async function restorePurchase() {
+  const token = localStorage.getItem(PRO_TOKEN_KEY);
+  const sessionId = localStorage.getItem(PRO_SESSION_KEY);
+  const status = document.getElementById('payment-status');
+
+  if (token && sessionId) {
+    // Re-verify with server to make sure it's still valid
+    status.textContent = 'Restoring…';
+    status.style.color = 'var(--muted)';
+    try {
+      const res = await fetch(`${NETLIFY_BASE}/verify-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = await res.json();
+      if (data.token) {
+        unlockPro();
+        status.textContent = '';
+      } else {
+        status.textContent = 'No valid purchase found.';
+        status.style.color = '#fca5a5';
+      }
+    } catch {
+      status.textContent = 'Could not connect — check your internet connection.';
+      status.style.color = '#fca5a5';
+    }
+  } else {
+    status.textContent = 'No purchase found on this device.';
+    status.style.color = '#fca5a5';
+  }
+}
+
+function unlockPro() {
+  isPremium = true;
+  document.getElementById('unlock-section').style.display = 'none';
+  document.getElementById('premium-bar').style.display = 'flex';
+  document.getElementById('pro-features-card').style.display = 'none';
+  applyPremiumGate();
+}
+
+function checkUrlForToken() {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get('token');
+  const cancelled = params.get('cancelled');
+
+  if (sessionId) {
+    verifyAndUnlock(sessionId);
+  } else if (cancelled) {
+    window.history.replaceState({}, '', window.location.pathname);
+    const status = document.getElementById('payment-status');
+    status.textContent = 'Payment cancelled.';
+    status.style.color = 'var(--muted)';
+  } else {
+    // Check if already paid (stored token)
+    const token = localStorage.getItem(PRO_TOKEN_KEY);
+    if (token) unlockPro();
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// History & Favourites
+// ─────────────────────────────────────────────────────────
+const MAX_HISTORY = 10;
+let fillHistory = []; // [{id, groups, stickings, noteVal, bars, timestamp}]
+let favourites = new Set(); // set of fill IDs
+
+function makeFillId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function saveToHistory(result, stickings, noteVal, bars) {
+  const entry = {
+    id: makeFillId(),
+    groups: [...result],
+    stickings: result.map((_, i) => stickings[i] ? {...stickings[i]} : null),
+    noteVal,
+    bars,
+    timestamp: Date.now(),
+  };
+  // Avoid duplicate of last entry
+  if (fillHistory.length > 0) {
+    const last = fillHistory[0];
+    if (last.groups.join(',') === entry.groups.join(',') &&
+        last.stickings.map(s => s ? s.pattern : '').join(',') ===
+        entry.stickings.map(s => s ? s.pattern : '').join(',')) return;
+  }
+  fillHistory.unshift(entry);
+  if (fillHistory.length > MAX_HISTORY) fillHistory = fillHistory.slice(0, MAX_HISTORY);
+  persistHistory();
+}
+
+function persistHistory() {
+  try {
+    localStorage.setItem('cb_history', JSON.stringify(fillHistory));
+    localStorage.setItem('cb_favs', JSON.stringify([...favourites]));
+  } catch(e) {}
+}
+
+function loadHistory() {
+  try {
+    const h = localStorage.getItem('cb_history');
+    if (h) fillHistory = JSON.parse(h);
+    const f = localStorage.getItem('cb_favs');
+    if (f) favourites = new Set(JSON.parse(f));
+  } catch(e) {}
+}
+
+function loadFillEntry(entry) {
+  currentResult = [...entry.groups];
+  selectedStickings = {};
+  manuallySet = new Set();
+  entry.stickings.forEach((s, i) => {
+    if (s) selectedStickings[i] = s;
+  });
+  activeNote = entry.noteVal || activeNote;
+  activeBars = entry.bars || activeBars;
+  renderSegs('note-segs', Object.keys(NOTE_VALUES), activeNote, v => activeNote = v);
+  renderSegs('bar-segs', BAR_OPTS, activeBars, v => activeBars = v);
+
+  const area = document.getElementById('result-area');
+  area.style.display = 'block';
+  const total = currentResult.reduce((a,b)=>a+b,0);
+  document.getElementById('fill-meta').innerHTML =
+    `<span>${currentResult.length} groups</span><span style="color:var(--faint)">·</span><span>${total} hits</span>`;
+  document.getElementById('chop-progress').style.display = 'none';
+  renderFillDisplay();
+  updateChopBtn();
+  closeHistory();
+}
+
+function openHistory() {
+  if (!isPremium) return;
+  renderHistContent();
+  document.getElementById('hist-overlay').classList.add('open');
+}
+function closeHistory() { document.getElementById('hist-overlay').classList.remove('open'); }
+function closeHistoryOnBg(e) { if (e.target === document.getElementById('hist-overlay')) closeHistory(); }
+
+function toggleFavourite(id, e) {
+  e.stopPropagation();
+  if (favourites.has(id)) favourites.delete(id);
+  else favourites.add(id);
+  persistHistory();
+  renderHistContent();
+}
+
+function formatTimeAgo(ts) {
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+  if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
+  return Math.floor(secs/86400) + 'd ago';
+}
+
+function renderFillEntryHTML(entry) {
+  const isFav = favourites.has(entry.id);
+  const gc = GROUP_COLORS;
+  const div = document.createElement('div');
+  div.className = 'fill-entry';
+  div.onclick = () => loadFillEntry(entry);
+
+  // Groups row
+  const groupsDiv = document.createElement('div');
+  groupsDiv.className = 'fill-entry-left';
+  const bubblesDiv = document.createElement('div');
+  bubblesDiv.className = 'fill-entry-groups';
+  entry.groups.forEach((g, i) => {
+    if (i > 0) {
+      const plus = document.createElement('span');
+      plus.className = 'fill-entry-plus';
+      plus.textContent = '+';
+      bubblesDiv.appendChild(plus);
+    }
+    const b = document.createElement('div');
+    b.className = 'fill-entry-bubble';
+    const c = gc[g] || {bg:'rgba(255,255,255,0.08)',text:'var(--muted)',border:'var(--border)'};
+    b.style.cssText = `background:${c.bg};color:${c.text};border:1px solid ${c.border};`;
+    b.textContent = g;
+    bubblesDiv.appendChild(b);
+  });
+  groupsDiv.appendChild(bubblesDiv);
+
+  // Flat sticking
+  const flat = entry.stickings.map(s => s ? s.pattern : '?').join(' ');
+  const stickDiv = document.createElement('div');
+  stickDiv.className = 'fill-entry-sticking';
+  stickDiv.textContent = flat;
+  groupsDiv.appendChild(stickDiv);
+
+  // Right side: time + star
+  const rightDiv = document.createElement('div');
+  rightDiv.className = 'fill-entry-right';
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'fill-entry-meta';
+  timeSpan.textContent = formatTimeAgo(entry.timestamp);
+  const starBtn = document.createElement('button');
+  starBtn.className = 'star-btn' + (isFav ? ' starred' : '');
+  starBtn.innerHTML = isFav ? '★' : '☆';
+  starBtn.title = isFav ? 'Remove from favourites' : 'Add to favourites';
+  starBtn.onclick = (e) => toggleFavourite(entry.id, e);
+
+  rightDiv.appendChild(timeSpan);
+  rightDiv.appendChild(starBtn);
+  div.appendChild(groupsDiv);
+  div.appendChild(rightDiv);
+  return div;
+}
+
+function renderHistContent() {
+  const container = document.getElementById('hist-content');
+  container.innerHTML = '';
+
+  const favEntries = fillHistory.filter(e => favourites.has(e.id));
+  const histEntries = fillHistory.filter(e => !favourites.has(e.id));
+
+  if (favEntries.length > 0) {
+    const fl = document.createElement('div');
+    fl.className = 'hist-section-label';
+    fl.textContent = '★  Favourites';
+    container.appendChild(fl);
+    favEntries.forEach(e => container.appendChild(renderFillEntryHTML(e)));
+  }
+
+  const hl = document.createElement('div');
+  hl.className = 'hist-section-label';
+  hl.textContent = 'Recent';
+  container.appendChild(hl);
+
+  if (histEntries.length === 0 && favEntries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hist-empty';
+    empty.textContent = 'No fills generated yet. Hit "Generate fill" to start!';
+    container.appendChild(empty);
+  } else if (histEntries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hist-empty';
+    empty.textContent = 'All recent fills are favourited ★';
+    container.appendChild(empty);
+  } else {
+    histEntries.forEach(e => container.appendChild(renderFillEntryHTML(e)));
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Premium gate
+// ─────────────────────────────────────────────────────────
+let isPremium = false;
+const FREE_GROUPS = new Set([3,4,5]);
+const FREE_BARS = new Set([1]);
+
+function applyPremiumGate() {
+  // Groups: lock 2, 6, 7 chips when free
+  document.querySelectorAll('#group-chips .chip').forEach(el => {
+    const g = parseInt(el.textContent);
+    const locked = !isPremium && !FREE_GROUPS.has(g);
+    el.classList.toggle('locked', locked);
+    el.style.pointerEvents = locked ? 'none' : '';
+    // Remove/add lock badge
+    const existing = el.querySelector('.lock-overlay');
+    if (locked && !existing) {
+      const badge = document.createElement('div');
+      badge.className = 'lock-overlay';
+      badge.innerHTML = '<svg width="8" height="9" viewBox="0 0 8 9" fill="none"><rect x="1" y="3.5" width="6" height="5" rx="1" fill="var(--faint)"/><path d="M2.5 3.5V2.5C2.5 1.67 3.17 1 4 1C4.83 1 5.5 1.67 5.5 2.5V3.5" stroke="var(--faint)" stroke-width="1" stroke-linecap="round" fill="none"/></svg>';
+      el.appendChild(badge);
+    } else if (!locked && existing) {
+      existing.remove();
+    }
+    // Force deselect locked groups
+    if (locked && activeGroups.has(g)) {
+      activeGroups.delete(g);
+      el.classList.remove('on');
+      el.setAttribute('aria-pressed', false);
+    }
+  });
+
+  // Ensure at least one free group selected
+  const hasFree = [...activeGroups].some(g => FREE_GROUPS.has(g));
+  if (!hasFree) {
+    activeGroups.add(3);
+    renderChips();
+  }
+
+  // Bars: lock 2,3,4 when free
+  document.querySelectorAll('#bar-segs .seg').forEach(el => {
+    const b = el.textContent.includes('1') ? 1 : parseInt(el.textContent);
+    const locked = !isPremium && !FREE_BARS.has(b);
+    el.classList.toggle('locked', locked);
+    el.style.pointerEvents = locked ? 'none' : '';
+    // Lock icon text
+    if (locked) {
+      if (!el.querySelector('svg')) el.innerHTML += ' <svg width="9" height="10" viewBox="0 0 9 10" fill="none"><rect x="1" y="4" width="7" height="6" rx="1.5" fill="currentColor" opacity="0.5"/><path d="M2.5 4V2.8C2.5 1.8 3.1 1 4.5 1C5.9 1 6.5 1.8 6.5 2.8V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.5"/></svg>';
+    } else {
+      el.innerHTML = el.textContent.replace(/ *$/, '').trim();
+      // Re-set label properly
+      const bVal = el._barVal;
+      if (bVal) el.textContent = bVal === 1 ? '1 bar' : bVal + ' bars';
+    }
+    // Force back to 1 bar if current is locked
+    if (locked && activeBars === b) {
+      activeBars = 1;
+      renderSegs('bar-segs', BAR_OPTS, activeBars, v => activeBars = v);
+    }
+  });
+
+  // Re-render segs cleanly to avoid duplicate SVGs
+  renderSegs('bar-segs', BAR_OPTS, activeBars, v => activeBars = v);
+
+  // Feature locks
+  // Show/hide entire feature blocks
+  // kick fully hidden when free
+  document.getElementById('kick-row').style.display         = isPremium ? 'flex'  : 'none';
+  // chop stays visible with lock overlay
+  document.getElementById('chop-lock').style.display        = isPremium ? 'none' : 'flex';
+  // rud-sel stays visible with lock overlay
+  document.getElementById('rud-sel-lock').style.display    = isPremium ? 'none' : 'flex';
+  document.getElementById('rud-sel-btn').style.pointerEvents = isPremium ? '' : 'none';
+  // hist fully hidden when free
+  document.getElementById('hist-btn-wrap').style.display   = isPremium ? 'block' : 'none';
+  document.getElementById('pro-features-card').style.display = isPremium ? 'none' : 'block';
+}
+
+// ─────────────────────────────────────────────────────────
+// Rudiment selector
+// ─────────────────────────────────────────────────────────
+// enabledRudiments: Set of pattern strings that are allowed in auto-generation.
+// null means "all enabled" (default before the modal is opened).
+let enabledRudiments = null; // null = all on
+
+function getAllPatterns() {
+  const all = new Set();
+  Object.values(RUDIMENTS).forEach(arr => arr.forEach(r => all.add(r.pattern)));
+  return all;
+}
+
+function isRudEnabled(pattern) {
+  if (enabledRudiments === null) return true;
+  return enabledRudiments.has(pattern);
+}
+
+function openRudSelector() {
+  // Initialise enabledRudiments if first open
+  if (enabledRudiments === null) {
+    enabledRudiments = getAllPatterns();
+  }
+  renderRudSelectorContent();
+  document.getElementById('rud-sel-overlay').classList.add('open');
+}
+
+function closeRudSelector() {
+  document.getElementById('rud-sel-overlay').classList.remove('open');
+}
+
+function closeRudSelectorOnBg(e) {
+  if (e.target === document.getElementById('rud-sel-overlay')) closeRudSelector();
+}
+
+function setAllRudiments(on) {
+  if (on) {
+    enabledRudiments = getAllPatterns();
+  } else {
+    enabledRudiments = new Set();
+  }
+  renderRudSelectorContent();
+}
+
+function toggleRudiment(pattern) {
+  if (enabledRudiments === null) enabledRudiments = getAllPatterns();
+  if (enabledRudiments.has(pattern)) enabledRudiments.delete(pattern);
+  else enabledRudiments.add(pattern);
+  renderRudSelectorContent();
+}
+
+function renderRudSelectorContent() {
+  const container = document.getElementById('rud-sel-content');
+  const groups = Object.keys(RUDIMENTS).map(Number).sort((a,b)=>a-b);
+  container.innerHTML = '';
+  groups.forEach(g => {
+    const gc = GROUP_COLORS[g];
+    const label = document.createElement('div');
+    label.className = 'rud-sel-group-label';
+    label.innerHTML = `<span style="color:${gc ? gc.text : 'var(--accent)'}">Group of ${g}</span>`;
+    container.appendChild(label);
+
+    RUDIMENTS[g].forEach(r => {
+      const checked = isRudEnabled(r.pattern);
+      const row = document.createElement('div');
+      row.className = 'rud-check-row' + (checked ? ' checked' : '');
+      row.onclick = () => toggleRudiment(r.pattern);
+
+      const isKick = r.pattern.includes('K');
+      row.innerHTML = `
+        <div class="rud-check-left">
+          <span class="rud-check-pattern" style="color:${isKick ? '#fb923c' : (gc ? gc.text : 'var(--accent)')}">${r.pattern}</span>
+          <span class="rud-check-name">${r.name}</span>
+        </div>
+        <div class="rud-checkbox">${checked ? '<svg width="12" height="12" viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}</div>
+      `;
+      container.appendChild(row);
+    });
+  });
+}
+
+function toggleKick() {
+  includeKick = !includeKick;
+  const track = document.getElementById('kick-toggle-track');
+  if (includeKick) track.classList.add('on');
+  else track.classList.remove('on');
+}
+
+function initControls() {
+  renderChips();
+  renderSegs('note-segs', Object.keys(NOTE_VALUES), activeNote, v => activeNote=v);
+  renderSegs('bar-segs', BAR_OPTS, activeBars, v => activeBars=v);
+  renderBeatDots();
+  updateChopBtn();
+}
+
+function findCombination(target, available, maxAttempts=300) {
+  for (let a=0; a<maxAttempts; a++) {
+    const combo=[]; let rem=target, tries=0;
+    while (rem>0 && tries<300) {
+      tries++;
+      const cands = available.filter(g => g<=rem);
+      if (!cands.length) break;
+      if (rem <= Math.min(...available)*2) {
+        if (cands.includes(rem)) { combo.push(rem); rem=0; break; }
+        const ts = cands.find(g => cands.includes(rem-g));
+        if (ts) { combo.push(ts); rem-=ts; continue; }
+      }
+      const pick = cands[Math.floor(Math.random()*cands.length)];
+      combo.push(pick); rem-=pick;
+    }
+    if (rem===0) return combo;
+  }
+  return null;
+}
+
+function pickStickingForSlot(g, i, stickings) {
+  const allRuds = RUDIMENTS[g];
+  if (!allRuds || allRuds.length === 0) return null;
+  const activeRuds = allRuds.filter(r => isRudEnabled(r.pattern));
+  const pool_all = activeRuds.length > 0 ? activeRuds : allRuds;
+  const kickRuds = pool_all.filter(r => r.pattern.includes('K'));
+  const handRuds = pool_all.filter(r => !r.pattern.includes('K'));
+  let chosen;
+  if (includeKick && kickRuds.length > 0 && Math.random() < 0.75) {
+    const doubleKick = kickRuds.filter(r => (r.pattern.match(/K/g)||[]).length >= 2);
+    const singleKick = kickRuds.filter(r => (r.pattern.match(/K/g)||[]).length === 1);
+    const weighted = [...doubleKick, ...doubleKick, ...doubleKick, ...singleKick];
+    const shuffled = weighted.slice().sort(() => Math.random() - 0.5);
+    const prevPat = i > 0 && stickings[i-1] ? stickings[i-1].pattern : null;
+    chosen = shuffled.find(r => !prevPat || !causesTriplet(prevPat, r.pattern)) || shuffled[0];
+  } else {
+    const pool = (handRuds.length > 0 ? handRuds : allRuds).slice().sort(() => Math.random() - 0.5);
+    chosen = pickNonClashing(g, i, stickings, pool);
+  }
+  return {...chosen, group: g};
+}
+
+function showGenerateError(area) {
+  area.style.display = 'block';
+  document.getElementById('fill-display').innerHTML = '<span style="color:var(--muted);font-size:14px;">Couldn\'t find a combination — try enabling more groups.</span>';
+  document.getElementById('fill-meta').innerHTML = '';
+  document.getElementById('chop-progress').style.display = 'none';
+  updateChopBtn();
+}
+
+function generate() {
+  stopChop();
+  const target = NOTE_VALUES[activeNote] * activeBars;
+  const area = document.getElementById('result-area');
+
+  // Snapshot locked slots before clearing
+  const lockedSlots = {};
+  if (currentResult) {
+    currentResult.forEach((g, i) => {
+      if (manuallySet.has(i) && selectedStickings[i]) {
+        lockedSlots[i] = { group: g, sticking: selectedStickings[i] };
+      }
+    });
+  }
+
+  const lockedIndices = Object.keys(lockedSlots).map(Number).sort((a,b)=>a-b);
+  const hasLocked = lockedIndices.length > 0;
+
+  let result, newStickings, newManuallySet;
+
+  if (!hasLocked) {
+    // Normal generate
+    result = findCombination(target, [...activeGroups]);
+    if (!result) { showGenerateError(area); return; }
+    newStickings = {};
+    newManuallySet = new Set();
+  } else {
+    // Subtract locked notes from target and generate the rest
+    const lockedTotal = lockedIndices.reduce((sum, i) => sum + lockedSlots[i].group, 0);
+    const freeTarget = target - lockedTotal;
+    newStickings = {};
+    newManuallySet = new Set();
+
+    if (freeTarget <= 0) {
+      // Everything locked, keep as-is
+      result = [...currentResult];
+      lockedIndices.forEach(i => {
+        newStickings[i] = lockedSlots[i].sticking;
+        newManuallySet.add(i);
+      });
+    } else {
+      const freeCombo = findCombination(freeTarget, [...activeGroups]);
+      if (!freeCombo) { showGenerateError(area); return; }
+
+      // Weave locked and free slots: locked slots stay at their original indices,
+      // free slots fill the remaining positions in order
+      const totalSlots = lockedIndices.length + freeCombo.length;
+      result = [];
+      let freeIdx = 0;
+      for (let i = 0; i < totalSlots; i++) {
+        if (lockedSlots[i] !== undefined) {
+          result.push(lockedSlots[i].group);
+          newStickings[i] = lockedSlots[i].sticking;
+          newManuallySet.add(i);
+        } else if (freeIdx < freeCombo.length) {
+          result.push(freeCombo[freeIdx++]);
+        }
+      }
+    }
+  }
+
+  // Auto-pick stickings for unlocked slots
+  result.forEach((g, i) => {
+    if (!newStickings[i]) {
+      newStickings[i] = pickStickingForSlot(g, i, newStickings);
+    }
+  });
+
+  currentResult = result;
+  selectedStickings = newStickings;
+  manuallySet = newManuallySet;
+
+  area.style.display = 'block';
+  const total = result.reduce((a,b)=>a+b,0);
+  document.getElementById('share-btn').style.display = 'flex';
+  document.getElementById('fill-meta').innerHTML =
+    `<span>${result.length} groups</span><span style="color:var(--faint)">·</span><span>${total} hits</span><span style="color:var(--faint)">·</span><span style="color:var(--faint);font-size:12px;">tap a group to change sticking</span>`;
+  document.getElementById('chop-progress').style.display = 'none';
+
+  fixTriplets();
+  favorNonRightEnd(result);
+  if (isPremium) saveToHistory(result, selectedStickings, activeNote, activeBars);
+  renderFillDisplay();
+  updateChopBtn();
+}
+
+function favorNonRightEnd(result) {
+  if (!result || result.length === 0) return;
+  const lastIdx = result.length - 1;
+  const lastG = result[lastIdx];
+  // Only adjust if unlocked
+  if (manuallySet.has(lastIdx)) return;
+  const sel = selectedStickings[lastIdx];
+  if (!sel) return;
+  const pat = sel.pattern.toUpperCase();
+  const endsDoubleKick = pat.endsWith('KK');
+  const endsR = pat[pat.length - 1] === 'R';
+  if (!endsR && !endsDoubleKick) return; // already fine
+
+  // Try to find a rudiment that doesn't end in R or KK
+  const allRuds = RUDIMENTS[lastG] || [];
+  const kickOk = includeKick;
+  const pool = kickOk ? allRuds : allRuds.filter(r => !r.pattern.includes('K'));
+  const candidates = pool.filter(r => {
+    const p = r.pattern.toUpperCase();
+    return p[p.length - 1] !== 'R' && !p.endsWith('KK');
+  });
+  if (!candidates.length) return;
+
+  // Among candidates, still respect triplet avoidance with the previous slot
+  const prevPat = lastIdx > 0 && selectedStickings[lastIdx - 1]
+    ? selectedStickings[lastIdx - 1].pattern : null;
+  const safe = candidates.find(r => !prevPat || !causesTriplet(prevPat, r.pattern));
+  const pick = safe || candidates[0];
+  selectedStickings[lastIdx] = {...pick, group: lastG};
+}
+
+// ─────────────────────────────────────────────────────────
+// Hand-flow helpers — avoid 3+ same hand in a row at boundaries
+// ─────────────────────────────────────────────────────────
+
+// Get the last N chars of a pattern (the trailing hand run)
+function trailingRun(pattern) {
+  if (!pattern) return '';
+  // K is neutral — stop the run at any K
+  const last = pattern[pattern.length - 1].toUpperCase();
+  if (last === 'K') return ''; // K breaks any run
+  let run = '';
+  for (let i = pattern.length - 1; i >= 0; i--) {
+    const c = pattern[i].toUpperCase();
+    if (c === 'K') break; // K resets the run
+    if (c === last) run = pattern[i] + run;
+    else break;
+  }
+  return run;
+}
+
+// Get the first N chars of a pattern (the leading hand run)
+function leadingRun(pattern) {
+  if (!pattern) return '';
+  const first = pattern[0].toUpperCase();
+  if (first === 'K') return ''; // K breaks any run
+  let run = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i].toUpperCase();
+    if (c === 'K') break;
+    if (c === first) run += pattern[i];
+    else break;
+  }
+  return run;
+}
+
+// Would joining prevPattern + nextPattern create 2+ same hand in a row at the boundary?
+function causesTriplet(prevPattern, nextPattern) {
+  if (!prevPattern || !nextPattern) return false;
+  const trail = trailingRun(prevPattern);
+  const lead = leadingRun(nextPattern);
+  // Empty run means K broke it — no clash possible
+  if (!trail || !lead) return false;
+  if (trail[0].toUpperCase() !== lead[0].toUpperCase()) return false;
+  return (trail.length + lead.length) >= 2; // avoid even 1+1 same hand at boundary
+}
+
+// Mirror a pattern (swap R<->L, r<->l)
+function mirrorPattern(pattern) {
+  return pattern.split('').map(c => (
+    c==='R'?'L':c==='L'?'R':c==='r'?'l':c==='l'?'r':c==='K'?'K':c
+  )).join('');
+}
+
+// Given a rudiment object, return its mirror as a rudiment object
+function mirrorRud(rud) {
+  return {...rud, pattern: mirrorPattern(rud.pattern), name: rud.name + ' (flipped)'};
+}
+
+// For a group at position idx, find the best rudiment that doesn't
+// create a 3-in-a-row with its neighbours. Returns a rudiment object.
+function pickNonClashing(g, idx, stickings, rudList) {
+  const prevPat = idx > 0 ? (stickings[idx-1] ? stickings[idx-1].pattern : null) : null;
+  // Try each rudiment (and its mirror) in order
+  const candidates = [];
+  rudList.forEach(r => {
+    candidates.push(r);
+    const m = mirrorRud(r);
+    if (m.pattern !== r.pattern) candidates.push(m);
+  });
+
+  for (const cand of candidates) {
+    // Check against previous group
+    if (prevPat && causesTriplet(prevPat, cand.pattern)) continue;
+    return cand;
+  }
+  // Fallback: just use first
+  return rudList[0];
+}
+
+// Re-evaluate all sticking boundaries and fix any triplets.
+// Only adjusts slots NOT manually locked.
+// Runs multiple passes until stable so both forward and backward clashes resolve.
+function fixTriplets() {
+  if (!currentResult) return;
+  const n = currentResult.length;
+
+  // pickBestFor: find a non-clashing rudiment for slot i given current neighbours
+  function pickBestFor(i) {
+    const g = currentResult[i];
+    const ruds = RUDIMENTS[g] || [];
+    if (!ruds.length) return null;
+    const prevPat = i > 0 && selectedStickings[i-1] ? selectedStickings[i-1].pattern : null;
+    const nextPat = i < n-1 && selectedStickings[i+1] ? selectedStickings[i+1].pattern : null;
+
+    const candidates = [];
+    ruds.forEach(r => {
+      candidates.push(r);
+      const m = mirrorRud(r);
+      if (m.pattern !== r.pattern) candidates.push(m);
+    });
+
+    for (const cand of candidates) {
+      if (prevPat && causesTriplet(prevPat, cand.pattern)) continue;
+      if (nextPat && causesTriplet(cand.pattern, nextPat)) continue;
+      return cand;
+    }
+    // Fallback: at least avoid clash with prev
+    for (const cand of candidates) {
+      if (prevPat && causesTriplet(prevPat, cand.pattern)) continue;
+      return cand;
+    }
+    return ruds[0];
+  }
+
+  // Run up to 4 passes to let fixes propagate in both directions
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      if (manuallySet.has(i)) continue;
+      const sel = selectedStickings[i];
+      if (!sel) continue;
+      const prevSel = i > 0 ? selectedStickings[i-1] : null;
+      const nextSel = i < n-1 ? selectedStickings[i+1] : null;
+      const clashPrev = prevSel && causesTriplet(prevSel.pattern, sel.pattern);
+      const clashNext = nextSel && causesTriplet(sel.pattern, nextSel.pattern);
+      if (clashPrev || clashNext) {
+        const fixed = pickBestFor(i);
+        if (fixed && fixed.pattern !== sel.pattern) {
+          selectedStickings[i] = {...fixed, group: currentResult[i]};
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+}
+
+let openDropdownIdx = null;
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.rud-dropdown').forEach(d => d.remove());
+  openDropdownIdx = null;
+}
+
+function renderFillDisplay() {
+  if (!currentResult) return;
+  const fd = document.getElementById('fill-display');
+  fd.innerHTML = '';
+  currentResult.forEach((n, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '+';
+      fd.appendChild(sep);
+    }
+    const gc = GROUP_COLORS[n];
+    const sel = selectedStickings[i];
+    const ruds = RUDIMENTS[n] || [];
+    const isManual = manuallySet.has(i);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'fill-group-wrap';
+
+    // Bubble container (relative so lock btn can sit on top-right)
+    const bubbleWrap = document.createElement('div');
+    bubbleWrap.style.cssText = 'position:relative;display:inline-flex;';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'group-bubble';
+    bubble.style.cssText = `background:${gc.bg};color:${gc.text};border:1.5px solid ${gc.border};flex-shrink:0;transition:transform 0.1s;`;
+    bubble.textContent = n;
+    bubbleWrap.appendChild(bubble);
+
+    // Lock button
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'lock-btn' + (isManual ? ' locked' : '');
+    lockBtn.title = isManual ? 'Unlock' : 'Lock sticking';
+    lockBtn.innerHTML = '<svg width="9" height="10" viewBox="0 0 9 10" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="4" width="7" height="6" rx="1.5" fill="currentColor"/><path d="M2.5 4V2.8C2.5 1.8 3.1 1 4.5 1C5.9 1 6.5 1.8 6.5 2.8V4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>';
+    lockBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (manuallySet.has(i)) {
+        manuallySet.delete(i);
+      } else {
+        manuallySet.add(i);
+      }
+      renderFillDisplay();
+    };
+    bubbleWrap.appendChild(lockBtn);
+    wrapper.appendChild(bubbleWrap);
+
+    if (sel) {
+      const prevSel = i > 0 ? selectedStickings[i-1] : null;
+      const clash = prevSel && causesTriplet(prevSel.pattern, sel.pattern);
+      const label = document.createElement('div');
+      label.style.cssText = `font-family:var(--mono);font-size:13px;font-weight:500;color:${clash ? '#fca5a5' : gc.text};opacity:${clash ? 1 : 0.85};letter-spacing:0.05em;text-align:center;`;
+      label.textContent = sel.pattern;
+      wrapper.appendChild(label);
+    }
+
+    bubble.addEventListener('pointerdown', () => bubble.style.transform = 'scale(0.92)');
+    bubble.addEventListener('pointerup',   () => bubble.style.transform = '');
+    bubble.addEventListener('pointerout',  () => bubble.style.transform = '');
+
+    bubble.onclick = (e) => {
+      e.stopPropagation();
+      if (!ruds.length) return;
+
+      // Toggle dropdown
+      if (openDropdownIdx === i) {
+        closeAllDropdowns();
+        return;
+      }
+      closeAllDropdowns();
+      openDropdownIdx = i;
+
+      const drop = document.createElement('div');
+      drop.className = 'rud-dropdown';
+
+      ruds.forEach(r => {
+        const opt = document.createElement('div');
+        opt.className = 'rud-option' + (sel && sel.pattern === r.pattern ? ' active' : '');
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'rud-option-name';
+        nameEl.textContent = r.name;
+
+        const patEl = document.createElement('span');
+        patEl.className = 'rud-option-pattern';
+        patEl.style.color = gc.text;
+        patEl.textContent = r.pattern;
+
+        opt.appendChild(nameEl);
+        opt.appendChild(patEl);
+
+        opt.onclick = (e) => {
+          e.stopPropagation();
+          // Apply only to this slot and lock it
+          manuallySet.add(i);
+          selectedStickings[i] = {...r, group: n};
+          fixTriplets();
+          closeAllDropdowns();
+          renderFillDisplay();
+        };
+        drop.appendChild(opt);
+      });
+
+      bubbleWrap.appendChild(drop);
+    };
+
+    fd.appendChild(wrapper);
+  });
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', () => {
+  if (openDropdownIdx !== null) closeAllDropdowns();
+});
+
+loadHistory();
+initControls();
+applyPremiumGate();
+checkUrlForToken();
+</script>
+</body>
+</html>

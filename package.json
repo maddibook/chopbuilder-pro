@@ -1,0 +1,8 @@
+{
+  "name": "chop-builder-functions",
+  "version": "1.0.0",
+  "description": "Netlify functions for Chop Builder Pro payments",
+  "dependencies": {
+    "stripe": "^14.0.0"
+  }
+}
