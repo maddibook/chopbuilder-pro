@@ -227,6 +227,8 @@
   .unlock-btn:disabled { opacity:0.5; cursor:default; }
   .restore-btn { width:100%; padding:8px; background:none; border:none; color:var(--faint); font-family:var(--sans); font-size:12px; cursor:pointer; margin-top:4px; }
   .restore-btn:hover { color:var(--muted); }
+  #restore-email:focus { border-color:var(--accent); }
+  #restore-email::placeholder { color:var(--faint); }
   .payment-status { font-size:12px; text-align:center; margin-top:6px; min-height:18px; }
 
 </style>
@@ -259,7 +261,16 @@
       Unlock Pro — €2.99
     </button>
     <div class="payment-status" id="payment-status"></div>
-    <button class="restore-btn" onclick="restorePurchase()">Already purchased? Restore</button>
+    <div id="restore-area" style="margin-top:6px;">
+      <button class="restore-btn" onclick="showRestoreForm()" id="restore-toggle">Already purchased? Restore</button>
+      <div id="restore-form" style="display:none;margin-top:8px;">
+        <div style="display:flex;gap:6px;">
+          <input id="restore-email" type="email" placeholder="Enter your email" onkeydown="if(event.key==='Enter')restoreByEmail()" style="flex:1;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;outline:none;" />
+          <button onclick="restoreByEmail()" style="padding:9px 14px;border-radius:var(--r);border:none;background:var(--accent-dark);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;">Restore</button>
+        </div>
+        <div style="font-size:11px;color:var(--faint);margin-top:5px;text-align:center;">Enter the email you used when purchasing</div>
+      </div>
+    </div>
   </div>
 
   <!-- Pro features summary (only shown in free mode) -->
@@ -1042,37 +1053,65 @@ async function verifyAndUnlock(sessionId) {
   }
 }
 
-async function restorePurchase() {
-  const token = localStorage.getItem(PRO_TOKEN_KEY);
-  const sessionId = localStorage.getItem(PRO_SESSION_KEY);
+function showRestoreForm() {
+  const form = document.getElementById('restore-form');
+  const btn = document.getElementById('restore-toggle');
+  const isShown = form.style.display !== 'none';
+  form.style.display = isShown ? 'none' : 'block';
+  btn.style.display = isShown ? 'block' : 'none';
+  if (!isShown) document.getElementById('restore-email').focus();
+}
+
+async function restoreByEmail() {
+  const email = document.getElementById('restore-email').value.trim();
   const status = document.getElementById('payment-status');
 
-  if (token && sessionId) {
-    // Re-verify with server to make sure it's still valid
-    status.textContent = 'Restoring…';
-    status.style.color = 'var(--muted)';
-    try {
-      const res = await fetch(`${NETLIFY_BASE}/verify-payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      });
-      const data = await res.json();
-      if (data.token) {
-        unlockPro();
-        status.textContent = '';
-      } else {
-        status.textContent = 'No valid purchase found.';
-        status.style.color = '#fca5a5';
-      }
-    } catch {
-      status.textContent = 'Could not connect — check your internet connection.';
+  if (!email || !email.includes('@')) {
+    status.textContent = 'Please enter a valid email address.';
+    status.style.color = '#fca5a5';
+    return;
+  }
+
+  status.textContent = 'Looking up your purchase…';
+  status.style.color = 'var(--muted)';
+
+  // First check if already stored locally
+  const localToken = localStorage.getItem(PRO_TOKEN_KEY);
+  const localSession = localStorage.getItem(PRO_SESSION_KEY);
+  if (localToken && localSession) {
+    unlockPro();
+    status.textContent = '';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${NETLIFY_BASE}/restore-by-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+
+    if (data.token) {
+      localStorage.setItem(PRO_TOKEN_KEY, data.token);
+      localStorage.setItem(PRO_SESSION_KEY, data.sessionId);
+      unlockPro();
+      status.textContent = '';
+    } else {
+      status.textContent = data.error || 'No purchase found for this email.';
       status.style.color = '#fca5a5';
     }
-  } else {
-    status.textContent = 'No purchase found on this device.';
+  } catch (err) {
+    status.textContent = 'Could not connect — check your internet connection.';
     status.style.color = '#fca5a5';
   }
+}
+
+// Keep for backwards compat (called from checkUrlForToken)
+async function restorePurchase() {
+  const token = localStorage.getItem(PRO_TOKEN_KEY);
+  if (token) { unlockPro(); return; }
+  showRestoreForm();
 }
 
 function unlockPro() {
