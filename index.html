@@ -566,77 +566,63 @@ async function playClick(time, isAccent) {
 async function playStroke(time, hand) {
   const ctx = await getCtx();
 
-  // Both hands are hi-hat sounds built from the same band-passed noise
-  // core, but with very different character:
-  //   R = closed hi-hat: ultra-short, very high, tight metallic tick
-  //   L = open hi-hat:   longer decay, slightly lower, washy and airy
+  // Tom sounds: sine wave with noise transient for attack crack
+  // R = floor tom (lower), L = rack tom (higher), K = kick (lowest)
+  // Pitch order: K < R < L
 
-  // ── Shared noise source (each call generates its own buffer) ──
-  function makeNoise(durationSecs) {
-    const size = Math.floor(ctx.sampleRate * durationSecs);
-    const buf = ctx.createBuffer(1, size, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    return src;
+  function makeTom(freq1, freq2, decay, vol, clickVol, time) {
+    // Pitched body
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq1, time);
+    osc.frequency.exponentialRampToValueAtTime(freq2, time + decay * 0.6);
+
+    // Noise click transient for attack crack
+    const clickSize = Math.floor(ctx.sampleRate * 0.012);
+    const clickBuf = ctx.createBuffer(1, clickSize, ctx.sampleRate);
+    const cd = clickBuf.getChannelData(0);
+    for (let i = 0; i < clickSize; i++) cd[i] = Math.random() * 2 - 1;
+    const click = ctx.createBufferSource();
+    click.buffer = clickBuf;
+
+    const clickFilt = ctx.createBiquadFilter();
+    clickFilt.type = 'bandpass';
+    clickFilt.frequency.value = freq1 * 2;
+    clickFilt.Q.value = 0.8;
+
+    const oscGain = ctx.createGain();
+    const clickGain = ctx.createGain();
+
+    osc.connect(oscGain); oscGain.connect(ctx.destination);
+    click.connect(clickFilt); clickFilt.connect(clickGain); clickGain.connect(ctx.destination);
+
+    oscGain.gain.setValueAtTime(0, time);
+    oscGain.gain.linearRampToValueAtTime(vol, time + 0.004);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, time + decay);
+
+    clickGain.gain.setValueAtTime(clickVol, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+
+    osc.start(time); osc.stop(time + decay + 0.05);
+    click.start(time); click.stop(time + 0.015);
+    return [osc, click];
   }
 
   if (hand === 'R') {
-    // ── RIGHT — closed hi-hat ───────────────── ─────────────────────────────────
-    // Very high bandpass (8–16 kHz), punchy attack, dies in ~30 ms
-    const src = makeNoise(0.04);
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 5500;
-    hp.Q.value = 0.6;
-
-    const gain = ctx.createGain();
-    src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
-
-    gain.gain.setValueAtTime(0.55, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.028); // very tight
-
-    src.start(time); src.stop(time + 0.04);
-    return [src];
+    // ── RIGHT — floor tom: mid, punchy ──────────────────────────
+    return makeTom(280, 120, 0.25, 0.9, 0.55, time);
 
   } else if (hand === 'L') {
-    // ── LEFT — open hi-hat ────────────────────── ────────────────────────────────────
-    const src = makeNoise(0.4);
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 2000;
-    hp.Q.value = 0.5;
-
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 7000;
-    lp.Q.value = 0.6;
-
-    const peak = ctx.createBiquadFilter();
-    peak.type = 'peaking';
-    peak.frequency.value = 4000;
-    peak.gain.value = 3;
-    peak.Q.value = 1.2;
-
-    const gain = ctx.createGain();
-    src.connect(hp); hp.connect(lp); lp.connect(peak); peak.connect(gain); gain.connect(ctx.destination);
-
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(0.38, time + 0.006);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.32);
-
-    src.start(time); src.stop(time + 0.4);
-    return [src];
+    // ── LEFT — rack tom: bright, punchy, short and snappy ────────
+    // High start freq, moderate drop, tight decay
+    return makeTom(380, 200, 0.12, 0.7, 0.55, time);
 
   } else {
     // ── KICK — deep sine thud with pitch drop ──────────────────
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(40, time + 0.15);
+    osc.frequency.setValueAtTime(180, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.2);
 
     // Click transient for attack punch
     const clickSize = Math.floor(ctx.sampleRate * 0.008);
@@ -657,11 +643,11 @@ async function playStroke(time, hand) {
     click.connect(clickFilt); clickFilt.connect(clickGain); clickGain.connect(ctx.destination);
 
     oscGain.gain.setValueAtTime(0, time);
-    oscGain.gain.linearRampToValueAtTime(0.9, time + 0.004);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+    oscGain.gain.linearRampToValueAtTime(1.8, time + 0.004);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
 
-    clickGain.gain.setValueAtTime(0.4, time);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+    clickGain.gain.setValueAtTime(1.2, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.015);
 
     osc.start(time); osc.stop(time + 0.28);
     click.start(time); click.stop(time + 0.012);
