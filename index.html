@@ -281,7 +281,7 @@
   </div>
 
   <!-- Pro features summary (only shown in free mode) -->
-  <div id="pro-features-card" style="background:rgba(124,92,252,0.07);border:1px dashed rgba(124,92,252,0.3);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;display:block;">
+  <div id="pro-features-card" style="background:rgba(124,92,252,0.07);border:1px dashed rgba(124,92,252,0.3);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;margin-top:12px;display:block;">
     <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:10px;letter-spacing:0.02em;">🔒 Chop Builder Pro unlocks:</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
       <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;"><span style="color:rgba(124,92,252,0.7);">●</span> Groups 2, 6 &amp; 7</div>
@@ -449,6 +449,8 @@ const RUDIMENTS = {
     {name:'RLK',pattern:'RLK',desc:'Kick on the third — natural and groovy.'},
     {name:'LRK',pattern:'LRK',desc:'Left-lead version.'},
     {name:'RKL',pattern:'RKL',desc:'Kick in the middle.'},
+    {name:'RKK',pattern:'RKK',desc:'Right into double kick — punchy and driving.'},
+    {name:'LKK',pattern:'LKK',desc:'Left into double kick.'},
   ],
   4:[
     {name:'Paradiddle',pattern:'RLRR',desc:'The king of 4-note groupings. Accent the first note.'},
@@ -473,6 +475,10 @@ const RUDIMENTS = {
     {name:'RLLKR',pattern:'RLLKR',desc:'Kick on 4 — very musical over a groove.'},
     {name:'RLKLL',pattern:'RLKLL',desc:'Kick on 3, double left landing.'},
     {name:'RLRLK',pattern:'RLRLK',desc:'Kick on the last note — punchy finish.'},
+    {name:'RLRKK',pattern:'RLRKK',desc:'Double kick finish — very driving.'},
+    {name:'LRLKK',pattern:'LRLKK',desc:'Left-lead version.'},
+    {name:'RLLKK',pattern:'RLLKK',desc:'Double on left then double kick — powerful landing.'},
+    {name:'LRRKK',pattern:'LRRKK',desc:'Left-lead version.'},
   ],
   6:[
     {name:'Six stroke roll',pattern:'RLLRRL',desc:'Three sets of doubles — great for fast 6s.'},
@@ -1070,8 +1076,7 @@ async function verifyAndUnlock(sessionId) {
 // Add your codes here — all lowercase. Share them with friends.
 // To add a new code just add it to this list and redeploy index.html.
 const PROMO_CODES = [
-  'drums2024',      // example — change these to whatever you want!
-  'chopbuilder',
+  'chopbuilder187',
 ];
 
 function redeemPromo() {
